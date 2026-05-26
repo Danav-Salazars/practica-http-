@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Práctica HTTP — Servidor Apache2</title>
+
+  <!-- Canvas Confetti CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+
+  <!-- Google Fonts: Orbitron (display) + Exo 2 (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Exo+2:wght@300;400;600&display=swap" rel="stylesheet" />
+
+  <style>
+    /* =============================================
+       CSS VARIABLES — PALETA PRINCIPAL
+    ============================================= */
+    :root {
+      --bg-deep:    #050b18;
+      --bg-card:    #0d1a2e;
+      --bg-section: #0a1525;
+      --accent-1:   #00d4ff;   /* cian eléctrico */
+      --accent-2:   #7c3aed;   /* violeta */
+      --accent-3:   #f59e0b;   /* ámbar */
+      --accent-4:   #10b981;   /* esmeralda */
+      --text-main:  #e2e8f0;
+      --text-dim:   #94a3b8;
+      --border-glow: rgba(0, 212, 255, 0.6);
+      --font-display: 'Orbitron', monospace;
+      --font-body:    'Exo 2', sans-serif;
+    }
+
+    /* =============================================
+       RESET & BASE
+    ============================================= */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg-deep);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* =============================================
+       FONDO ANIMADO (grid de puntos)
+    ============================================= */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        radial-gradient(circle at 20% 30%, rgba(0,212,255,.07) 0%, transparent 50%),
+        radial-gradient(circle at 80% 70%, rgba(124,58,237,.07) 0%, transparent 50%),
+        radial-gradient(rgba(0,212,255,.12) 1px, transparent 1px);
+      background-size: 100% 100%, 100% 100%, 28px 28px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* =============================================
+       BARRA SUPERIOR — RELOJ EN TIEMPO REAL
+    ============================================= */
+    #topbar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(5,11,24,.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0,212,255,.15);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: .6rem 2rem;
+    }
+
+    #topbar .logo {
+      font-family: var(--font-display);
+      font-size: .75rem;
+      letter-spacing: .15em;
+      color: var(--accent-1);
+      text-transform: uppercase;
+    }
+
+    #clock {
+      font-family: var(--font-display);
+      font-size: .9rem;
+      color: var(--accent-1);
+      letter-spacing: .1em;
+      text-shadow: 0 0 10px var(--accent-1);
+    }
+
+    /* =============================================
+       SECCIÓN HERO — IMAGEN DEL GRUPO
+    ============================================= */
+    #hero {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 5rem 1.5rem 4rem;
+      text-align: center;
+    }
+
+    #hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(1.6rem, 4vw, 3rem);
+      font-weight: 900;
+      letter-spacing: .08em;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: .5rem;
+    }
+
+    #hero .subtitle {
+      color: var(--text-dim);
+      font-size: 1rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 3rem;
+    }
+
+    /* Contenedor de la imagen con efecto hover */
+    .img-wrapper {
+      position: relative;
+      display: inline-block;
+      border-radius: 1.2rem;
+      cursor: pointer;
+      /* Borde brillante animado (siempre visible, se intensifica en hover) */
+      padding: 4px;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2), var(--accent-3), var(--accent-1));
+      background-size: 300% 300%;
+      animation: borderSpin 4s linear infinite;
+      transition: transform .4s ease, box-shadow .4s ease;
+    }
+
+    .img-wrapper:hover {
+      transform: scale(1.04);
+      box-shadow: 0 0 40px rgba(0,212,255,.55), 0 0 80px rgba(124,58,237,.35);
+    }
+
+    /* Texto que aparece al hacer hover sobre la imagen */
+    .img-overlay {
+      position: absolute;
+      inset: 0;
+      border-radius: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(5,11,24,.72);
+      opacity: 0;
+      transition: opacity .35s ease;
+      pointer-events: none;
+    }
+
+    .img-wrapper:hover .img-overlay { opacity: 1; }
+
+    .img-overlay span {
+      font-family: var(--font-display);
+      font-size: clamp(1rem, 3vw, 2rem);
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: .1em;
+      text-shadow: 0 0 20px var(--accent-1);
+    }
+
+    .img-wrapper img {
+      display: block;
+      width: min(480px, 90vw);
+      height: min(320px, 60vw);
+      object-fit: cover;
+      border-radius: 1rem;
+    }
+
+    /* Animación del borde arco iris */
+    @keyframes borderSpin {
+      0%   { background-position: 0% 50%; }
+      50%  { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+
+    /* =============================================
+       SECCIÓN INTEGRANTES — CARDS
+    ============================================= */
+    #team {
+      position: relative;
+      z-index: 1;
+      padding: 4rem 1.5rem;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .section-title {
+      font-family: var(--font-display);
+      font-size: clamp(1rem, 2.5vw, 1.5rem);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent-1);
+      text-align: center;
+      margin-bottom: 2.5rem;
+      position: relative;
+    }
+
+    .section-title::after {
+      content: '';
+      display: block;
+      width: 60px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--accent-1), var(--accent-2));
+      margin: .6rem auto 0;
+      border-radius: 2px;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 1.5rem;
+    }
+
+    /* Colores de borde por tarjeta */
+    .card { --card-color: var(--accent-1); }
+    .card:nth-child(1) { --card-color: #00d4ff; }
+    .card:nth-child(2) { --card-color: #7c3aed; }
+    .card:nth-child(3) { --card-color: #f59e0b; }
+    .card:nth-child(4) { --card-color: #10b981; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1.5px solid var(--card-color);
+      border-radius: 1rem;
+      padding: 1.8rem 1.4rem;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: .7rem;
+      transition: transform .3s ease, box-shadow .3s ease;
+      box-shadow: 0 0 0 rgba(0,0,0,0);
+    }
+
+    .card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 8px 30px color-mix(in srgb, var(--card-color) 35%, transparent);
+    }
+
+    .card-icon {
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--card-color) 18%, transparent);
+      border: 2px solid var(--card-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--card-color);
+    }
+
+    .card-name {
+      font-family: var(--font-display);
+      font-size: .85rem;
+      font-weight: 700;
+      letter-spacing: .08em;
+      color: var(--text-main);
+    }
+
+    .card-role {
+      font-size: .8rem;
+      color: var(--card-color);
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    /* =============================================
+       SECCIÓN HTTP INFO
+    ============================================= */
+    #http-info {
+      position: relative;
+      z-index: 1;
+      background: var(--bg-section);
+      border-top: 1px solid rgba(0,212,255,.1);
+      border-bottom: 1px solid rgba(0,212,255,.1);
+      padding: 4rem 1.5rem;
+      text-align: center;
+    }
+
+    #http-info .info-box {
+      max-width: 720px;
+      margin: 0 auto;
+      background: var(--bg-card);
+      border: 1px solid rgba(0,212,255,.2);
+      border-radius: 1rem;
+      padding: 2.5rem 2rem;
+    }
+
+    #http-info p {
+      color: var(--text-dim);
+      line-height: 1.8;
+      font-size: 1rem;
+    }
+
+    #http-info p strong {
+      color: var(--accent-1);
+    }
+
+    /* =============================================
+       SECCIÓN INTERACTIVA — BOTÓN CONFETTI
+    ============================================= */
+    #interactive {
+      position: relative;
+      z-index: 1;
+      padding: 5rem 1.5rem;
+      text-align: center;
+    }
+
+    #status-msg {
+      font-family: var(--font-display);
+      font-size: clamp(1rem, 2.5vw, 1.4rem);
+      color: var(--accent-4);
+      letter-spacing: .08em;
+      margin-bottom: 2rem;
+      min-height: 2rem;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity .5s ease, transform .5s ease;
+    }
+
+    #status-msg.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    #btn-check {
+      position: relative;
+      font-family: var(--font-display);
+      font-size: .9rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 1rem 2.5rem;
+      border: none;
+      border-radius: .7rem;
+      background: linear-gradient(135deg, var(--accent-1), var(--accent-2));
+      color: #fff;
+      cursor: pointer;
+      overflow: hidden;
+      transition: transform .2s ease, box-shadow .2s ease;
+      box-shadow: 0 0 20px rgba(0,212,255,.3);
+    }
+
+    #btn-check::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: rgba(255,255,255,.12);
+      opacity: 0;
+      transition: opacity .2s;
+    }
+
+    #btn-check:hover::before { opacity: 1; }
+    #btn-check:hover { transform: scale(1.05); box-shadow: 0 0 35px rgba(0,212,255,.55); }
+    #btn-check:active { transform: scale(.97); }
+
+    /* =============================================
+       FOOTER
+    ============================================= */
+    footer {
+      position: relative;
+      z-index: 1;
+      background: rgba(5,11,24,.95);
+      border-top: 1px solid rgba(0,212,255,.15);
+      padding: 2rem 1.5rem;
+      text-align: center;
+    }
+
+    footer p {
+      font-size: .8rem;
+      color: var(--text-dim);
+      letter-spacing: .06em;
+      line-height: 1.8;
+    }
+
+    footer span {
+      color: var(--accent-1);
+    }
+
+    /* =============================================
+       UTILIDADES RESPONSIVE
+    ============================================= */
+    @media (max-width: 480px) {
+      #topbar { flex-direction: column; gap: .3rem; padding: .5rem 1rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- =============================================
+       BARRA SUPERIOR CON RELOJ EN TIEMPO REAL
+  ============================================= -->
+  <div id="topbar">
+    <span class="logo">🖥️ Apache2 Server — Sistemas Operativos</span>
+    <span id="clock">Cargando...</span>
+  </div>
+
+
+  <!-- =============================================
+       HERO — IMAGEN DEL GRUPO
+  ============================================= -->
+  <section id="hero">
+    <h1>Grupo de Trabajo</h1>
+    <p class="subtitle">Práctica #5 &mdash; Servidor HTTP con Apache2</p>
+
+    <div class="img-wrapper">
+      <!-- La imagen grupo.jpg debe estar en la misma carpeta que este index.html -->
+      <img src="grupo.jpg" alt="Foto del grupo de trabajo" />
+
+      <!-- Overlay que aparece al pasar el mouse -->
+      <div class="img-overlay">
+        <span>⚡ Nuestro Equipo</span>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- =============================================
+       INTEGRANTES — CARDS
+  ============================================= -->
+  <section id="team">
+    <h2 class="section-title">Integrantes del Grupo</h2>
+
+    <div class="cards-grid">
+
+      <!-- Tarjeta 1 — Líder -->
+      <div class="card">
+        <div class="card-icon">01</div>
+        <div class="card-name">Integrante 1</div>
+        <div class="card-role">👑 Líder</div>
+      </div>
+
+      <!-- Tarjeta 2 — Desarrollador -->
+      <div class="card">
+        <div class="card-icon">02</div>
+        <div class="card-name">Integrante 2</div>
+        <div class="card-role">💻 Desarrollador</div>
+      </div>
+
+      <!-- Tarjeta 3 — Diseñador -->
+      <div class="card">
+        <div class="card-icon">03</div>
+        <div class="card-name">Integrante 3</div>
+        <div class="card-role">🎨 Diseñador</div>
+      </div>
+
+      <!-- Tarjeta 4 — QA -->
+      <div class="card">
+        <div class="card-icon">04</div>
+        <div class="card-name">Integrante 4</div>
+        <div class="card-role">🔍 QA</div>
+      </div>
+
+    </div>
+  </section>
+
+
+  <!-- =============================================
+       SECCIÓN HTTP INFO
+  ============================================= -->
+  <section id="http-info">
+    <h2 class="section-title">Nuestro Servidor HTTP</h2>
+
+    <div class="info-box">
+      <p>
+        <strong>HTTP (HyperText Transfer Protocol)</strong> es el protocolo de comunicación que
+        permite la transferencia de datos en la web; funciona bajo el modelo cliente–servidor,
+        donde el navegador envía peticiones <strong>GET</strong> y el servidor responde con el
+        recurso solicitado y un código de estado (200, 404, etc.).
+        Esta página está siendo servida por <strong>Apache2</strong> ejecutándose sobre
+        <strong>Linux (Lubuntu)</strong>, lo que convierte la máquina virtual en un servidor
+        web real accesible desde cualquier equipo de la red local.
+      </p>
+    </div>
+  </section>
+
+
+  <!-- =============================================
+       SECCIÓN INTERACTIVA — CONFETTI
+  ============================================= -->
+  <section id="interactive">
+    <h2 class="section-title">¿El servidor está funcionando?</h2>
+
+    <!-- Mensaje que aparece tras el clic -->
+    <div id="status-msg">🎉 ¡Servidor HTTP funcionando correctamente!</div>
+
+    <button id="btn-check" onclick="launchConfetti()">
+      ✅ Verificar servidor
+    </button>
+  </section>
+
+
+  <!-- =============================================
+       FOOTER
+  ============================================= -->
+  <footer>
+    <p>
+      <span>Universidad Libre</span> &nbsp;|&nbsp;
+      Materia: <span>Sistemas Operativos</span> &nbsp;|&nbsp;
+      Año: <span id="year"></span>
+    </p>
+    <p style="margin-top:.4rem;">
+      Servidor: <span>Apache2</span> &nbsp;·&nbsp; SO: <span>Linux (Lubuntu)</span>
+    </p>
+  </footer>
+
+
+  <!-- =============================================
+       JAVASCRIPT
+  ============================================= -->
+  <script>
+    /* ------------------------------------------
+       RELOJ EN TIEMPO REAL (actualiza cada 1 s)
+    ------------------------------------------ */
+    function updateClock() {
+      const now = new Date();
+
+      // Formato: Martes, 20 de mayo de 2025 — 14:35:09
+      const opciones = {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+      };
+      const fecha = now.toLocaleDateString('es-CO', opciones);
+
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const ss = String(now.getSeconds()).padStart(2, '0');
+      const hora = `${hh}:${mm}:${ss}`;
+
+      document.getElementById('clock').textContent = `${fecha} — ${hora}`;
+    }
+
+    // Llamar inmediatamente y luego cada segundo
+    updateClock();
+    setInterval(updateClock, 1000);
+
+
+    /* ------------------------------------------
+       AÑO DINÁMICO EN EL FOOTER
+    ------------------------------------------ */
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+
+    /* ------------------------------------------
+       CONFETTI + MENSAJE AL HACER CLIC
+    ------------------------------------------ */
+    function launchConfetti() {
+      // Mostrar mensaje
+      const msg = document.getElementById('status-msg');
+      msg.classList.add('visible');
+
+      // Lanzar confetti con múltiples ráfagas
+      const duration = 3000;
+      const end = Date.now() + duration;
+
+      const colors = ['#00d4ff', '#7c3aed', '#f59e0b', '#10b981', '#ffffff'];
+
+      (function frame() {
+        confetti({
+          particleCount: 6,
+          angle: 60,
+          spread: 55,
+          origin: { x: 0, y: 0.65 },
+          colors: colors
+        });
+        confetti({
+          particleCount: 6,
+          angle: 120,
+          spread: 55,
+          origin: { x: 1, y: 0.65 },
+          colors: colors
+        });
+
+        if (Date.now() < end) {
+          requestAnimationFrame(frame);
+        }
+      })();
+
+      // Ráfaga central inicial
+      confetti({
+        particleCount: 120,
+        spread: 80,
+        origin: { x: 0.5, y: 0.55 },
+        colors: colors
+      });
+    }
+  </script>
+
+</body>
+</html>
